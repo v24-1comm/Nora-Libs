@@ -1,5 +1,5 @@
 --[[
- local Nora = loadstring(game:HttpGet("https://raw.githubusercontent.com/v24-1comm/Nora-Libs/refs/heads/main/NoraLibrarys"))()
+ local Nora = loadstring(game:HttpGet("your_raw_url"))()
 --]]
 
 local NoraLib = {}
@@ -971,7 +971,10 @@ function NoraLib:Window(cfg)
             end)
 
             return { Get = function() return bind end }
-        end  -- FIX: this closing `end` was missing — it caused Win:Notify and everything below to be trapped inside Tab:Keybind
+        end  -- closes Tab:Keybind
+
+        return Tab  -- FIX: was completely missing — Win:Tab() was returning nil, crashing every :Section/:Toggle/:Keybind call
+    end  -- FIX: closes Win:Tab — was missing, causing Win:Notify to be nested inside Win:Tab
 
     -- ── Win:Notify{} ──
     function Win:Notify(cfg)

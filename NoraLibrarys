@@ -159,7 +159,7 @@ function NoraLib:Window(cfg)
         Name            = "NoraLib_" .. title,
         ResetOnSpawn    = false,
         ZIndexBehavior  = Enum.ZIndexBehavior.Sibling,
-        Parent          = gethui and gethui() or lp:WaitForChild("PlayerGui"),
+        Parent = lp:WaitForChild("PlayerGui")
     })
 
     -- Main frame

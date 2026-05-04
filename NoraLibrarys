@@ -1,5 +1,5 @@
 --[[
- local Nora = loadstring(game:HttpGet("your_raw_url"))()
+ local Nora = loadstring(game:HttpGet("https://raw.githubusercontent.com/v24-1comm/Nora-Libs/refs/heads/main/NoraLibrarys"))()
 --]]
 
 local NoraLib = {}

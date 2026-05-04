@@ -1,11 +1,11 @@
 --[[
-    NexusLib — Roblox UI Library
+    NoraLib — Roblox UI Library
     A lightweight, themeable script hub UI library.
     Usage: local Nexus = loadstring(game:HttpGet("your_raw_url"))()
 --]]
 
-local NexusLib = {}
-NexusLib.__index = NexusLib
+local NoraLib = {}
+NoraLib.__index = NoraLib
 
 -- Services
 local Players        = game:GetService("Players")
@@ -144,19 +144,19 @@ local function makeDraggable(titleBar, frame)
 end
 
 -- ─────────────────────────────────────────────────────────────
--- NexusLib:Window{}
+-- NoraLib:Window{}
 -- ─────────────────────────────────────────────────────────────
-function NexusLib:Window(cfg)
+function NoraLib:Window(cfg)
     cfg = cfg or {}
     local theme   = Themes[cfg.Theme or "Dark"]
-    local title   = cfg.Title    or "NexusLib"
+    local title   = cfg.Title    or "NoraLib"
     local sub     = cfg.SubTitle or ""
     local winSize = cfg.Size     or UDim2.fromOffset(480, 360)
     local minSize = cfg.MinSize  or Vector2.new(360, 280)
 
     -- ScreenGui
     local sg = makeInst("ScreenGui", {
-        Name            = "NexusLib_" .. title,
+        Name            = "NoraLib_" .. title,
         ResetOnSpawn    = false,
         ZIndexBehavior  = Enum.ZIndexBehavior.Sibling,
         Parent          = gethui and gethui() or lp:WaitForChild("PlayerGui"),
@@ -1022,4 +1022,4 @@ function NexusLib:Window(cfg)
     return Win
 end
 
-return NexusLib
+return NoraLib

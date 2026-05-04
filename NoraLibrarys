@@ -327,11 +327,12 @@ function NoraLib:Window(cfg)
         local isFirst = #self._tabs == 0
 
         -- Tab button
-        local btn = makeInst("TextButton", {
-    Size             = UDim2.fromOffset(90, 36), -- FIXED WIDTH
+       local btn = makeInst("TextButton", {
+    AutomaticSize    = Enum.AutomaticSize.X,
+    Size             = UDim2.new(0, 0, 1, 0),
     BackgroundTransparency = 1,
     Text             = name,
-    TextColor3       = isFirst and theme.Accent or theme.Text,
+    TextColor3       = isFirst and theme.Accent or theme.TextMuted,
     Font             = Enum.Font.GothamBold,
     TextSize         = 12,
     ZIndex           = 3,

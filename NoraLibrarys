@@ -867,7 +867,10 @@ function NoraLib:Window(cfg)
         -- ── Tab:Keybind{} ──
         function Tab:Keybind(cfg)
             cfg = cfg or {}
-            local key     = cfg.Default or Enum.KeyCode.Unknown
+            local bind = cfg.Default or {
+    KeyCode = Enum.KeyCode.Q,
+    InputType = nil
+}
             local binding = false
 
             local row = makeInst("Frame", {
@@ -911,24 +914,53 @@ function NoraLib:Window(cfg)
                 keyBtn.TextColor3 = theme.Accent
             end)
 
-            UserInputService.InputBegan:Connect(function(inp, gp)
-                if gp then return end
-                if binding and inp.UserInputType == Enum.UserInputType.Keyboard then
-                    binding = false
-                    key = inp.KeyCode
-                    keyBtn.Text = key.Name
-                    keyBtn.TextColor3 = theme.TextMuted
-                end
-                if not binding and inp.KeyCode == key then
-                    if cfg.Callback then cfg.Callback(key) end
-                end
-            end)
+            local bind = {
+    KeyCode = key,
+    InputType = nil
+}
 
-            return { Get = function() return key end }
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+
+    -- 🎯 CAPTURE MODE (when user is choosing a key)
+    if binding then
+        binding = false
+
+        -- keyboard
+        if inp.KeyCode ~= Enum.KeyCode.Unknown then
+            bind = {
+                KeyCode = inp.KeyCode,
+                InputType = nil
+            }
+            keyBtn.Text = inp.KeyCode.Name
+
+        -- mouse
+        elseif inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.MouseButton2 then
+
+            bind = {
+                KeyCode = nil,
+                InputType = inp.UserInputType
+            }
+
+            keyBtn.Text = (inp.UserInputType == Enum.UserInputType.MouseButton1 and "Mouse1" or "Mouse2")
         end
 
-        return Tab
+        keyBtn.TextColor3 = theme.TextMuted
+        return
     end
+
+    -- 🎯 NORMAL USE (detect press)
+    local pressed =
+        (bind.KeyCode and inp.KeyCode == bind.KeyCode) or
+        (bind.InputType and inp.UserInputType == bind.InputType)
+
+    if pressed then
+        if cfg.Callback then
+            cfg.Callback(bind)
+        end
+    end
+end)
 
     -- ── Win:Notify{} ──
     function Win:Notify(cfg)

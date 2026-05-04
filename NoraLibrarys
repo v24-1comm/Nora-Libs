@@ -305,7 +305,7 @@ function NoraLib:Window(cfg)
     local tabBarLayout = Instance.new("UIListLayout")
     tabBarLayout.FillDirection = Enum.FillDirection.Horizontal
     tabBarLayout.SortOrder     = Enum.SortOrder.LayoutOrder
-    tabBarLayout.Padding       = UDim.new(0, 2)
+    tabBarLayout.Padding       = UDim.new(0, 6)
     tabBarLayout.Parent        = tabBar
     padding(tabBar, 0, 8, 0, 10)
 
@@ -328,14 +328,15 @@ function NoraLib:Window(cfg)
 
         -- Tab button
         local btn = makeInst("TextButton", {
-            Size = UDim2.fromOffset(80, 36),
-            BackgroundTransparency = 1,
-            Text             = name,
-            TextColor3       = theme.Text,
-            Font             = Enum.Font.GothamBold,
-            TextSize         = 12,
-            ZIndex           = 3,
-            Parent           = tabBar,
+    Size             = UDim2.fromOffset(90, 36), -- FIXED WIDTH
+    BackgroundTransparency = 1,
+    Text             = name,
+    TextColor3       = isFirst and theme.Accent or theme.Text,
+    Font             = Enum.Font.GothamBold,
+    TextSize         = 12,
+    ZIndex           = 3,
+    Parent           = tabBar,
+})
         })
         padding(btn, 0, 12, 0, 12)
 

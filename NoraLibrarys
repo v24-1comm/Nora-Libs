@@ -1,5 +1,5 @@
 --[[
- local Nora = loadstring(game:HttpGet("your_raw_url"))()
+ local Nora = loadstring(game:HttpGet("https://raw.githubusercontent.com/v24-1comm/Nora-Libs/refs/heads/main/NoraLibrarys"))()
 --]]
 
 local NoraLib = {}
@@ -867,11 +867,26 @@ function NoraLib:Window(cfg)
         -- ── Tab:Keybind{} ──
         function Tab:Keybind(cfg)
             cfg = cfg or {}
-            local bind = cfg.Default or {
-    KeyCode = Enum.KeyCode.Q,
-    InputType = nil
-}
+
+            -- Normalise whatever was passed as Default into {KeyCode, InputType}
+            local defaultRaw = cfg.Default or { KeyCode = Enum.KeyCode.Q, InputType = nil }
+            local bind
+            if typeof(defaultRaw) == "EnumItem" then
+                bind = { KeyCode = defaultRaw, InputType = nil }
+            else
+                bind = { KeyCode = defaultRaw.KeyCode or nil, InputType = defaultRaw.InputType or nil }
+            end
+
             local binding = false
+
+            -- Helper: human-readable label for current bind
+            local function bindLabel()
+                if bind.InputType == Enum.UserInputType.MouseButton1 then return "Mouse1"
+                elseif bind.InputType == Enum.UserInputType.MouseButton2 then return "Mouse2"
+                elseif bind.InputType == Enum.UserInputType.MouseButton3 then return "Mouse3"
+                elseif bind.KeyCode then return bind.KeyCode.Name
+                else return "None" end
+            end
 
             local row = makeInst("Frame", {
                 Size             = UDim2.new(1, 0, 0, 36),
@@ -899,7 +914,7 @@ function NoraLib:Window(cfg)
                 Size             = UDim2.fromOffset(72, 24),
                 Position         = UDim2.new(1, -82, 0.5, -12),
                 BackgroundColor3 = theme.Surface3,
-                Text             = key.Name,
+                Text             = bindLabel(),   -- FIX: was `key.Name` (undefined)
                 TextColor3       = theme.TextMuted,
                 Font             = Enum.Font.GothamBold,
                 TextSize         = 11,
@@ -914,53 +929,49 @@ function NoraLib:Window(cfg)
                 keyBtn.TextColor3 = theme.Accent
             end)
 
-            local bind = {
-    KeyCode = key,
-    InputType = nil
-}
+            -- FIX: removed the broken second `local bind = { KeyCode = key, ... }` declaration
+            -- FIX: InputBegan now properly handles Mouse1/Mouse2/Mouse3 AND keyboard keys
+            UserInputService.InputBegan:Connect(function(inp, gp)
+                if gp then return end
 
-UserInputService.InputBegan:Connect(function(inp, gp)
-    if gp then return end
+                -- CAPTURE MODE: user is choosing a new bind
+                if binding then
+                    local isKeyboard = inp.UserInputType == Enum.UserInputType.Keyboard
+                        and inp.KeyCode ~= Enum.KeyCode.Unknown
 
-    -- 🎯 CAPTURE MODE (when user is choosing a key)
-    if binding then
-        binding = false
+                    local isMouse = inp.UserInputType == Enum.UserInputType.MouseButton1
+                        or inp.UserInputType == Enum.UserInputType.MouseButton2
+                        or inp.UserInputType == Enum.UserInputType.MouseButton3
 
-        -- keyboard
-        if inp.KeyCode ~= Enum.KeyCode.Unknown then
-            bind = {
-                KeyCode = inp.KeyCode,
-                InputType = nil
-            }
-            keyBtn.Text = inp.KeyCode.Name
+                    if isKeyboard then
+                        binding = false
+                        bind = { KeyCode = inp.KeyCode, InputType = nil }
+                        keyBtn.Text = inp.KeyCode.Name
+                        keyBtn.TextColor3 = theme.TextMuted
+                        if cfg.Callback then cfg.Callback(bind) end
 
-        -- mouse
-        elseif inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.MouseButton2 then
+                    elseif isMouse then
+                        binding = false
+                        bind = { KeyCode = nil, InputType = inp.UserInputType }
+                        keyBtn.Text = bindLabel()
+                        keyBtn.TextColor3 = theme.TextMuted
+                        if cfg.Callback then cfg.Callback(bind) end
+                    end
+                    return
+                end
 
-            bind = {
-                KeyCode = nil,
-                InputType = inp.UserInputType
-            }
+                -- NORMAL USE: detect if bound key/button was pressed
+                local pressed =
+                    (bind.KeyCode   and inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == bind.KeyCode) or
+                    (bind.InputType and inp.UserInputType == bind.InputType)
 
-            keyBtn.Text = (inp.UserInputType == Enum.UserInputType.MouseButton1 and "Mouse1" or "Mouse2")
-        end
+                if pressed and cfg.Callback then
+                    cfg.Callback(bind)
+                end
+            end)
 
-        keyBtn.TextColor3 = theme.TextMuted
-        return
-    end
-
-    -- 🎯 NORMAL USE (detect press)
-    local pressed =
-        (bind.KeyCode and inp.KeyCode == bind.KeyCode) or
-        (bind.InputType and inp.UserInputType == bind.InputType)
-
-    if pressed then
-        if cfg.Callback then
-            cfg.Callback(bind)
-        end
-    end
-end)
+            return { Get = function() return bind end }
+        end  -- FIX: this closing `end` was missing — it caused Win:Notify and everything below to be trapped inside Tab:Keybind
 
     -- ── Win:Notify{} ──
     function Win:Notify(cfg)

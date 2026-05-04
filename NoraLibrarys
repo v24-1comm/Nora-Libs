@@ -1,7 +1,5 @@
 --[[
-    NoraLib — Roblox UI Library
-    A lightweight, themeable script hub UI library.
-    Usage: local Nexus = loadstring(game:HttpGet("your_raw_url"))()
+ local Nora = loadstring(game:HttpGet("your_raw_url"))()
 --]]
 
 local NoraLib = {}
@@ -159,7 +157,7 @@ function NoraLib:Window(cfg)
         Name            = "NoraLib_" .. title,
         ResetOnSpawn    = false,
         ZIndexBehavior  = Enum.ZIndexBehavior.Sibling,
-        Parent = lp:WaitForChild("PlayerGui")
+        Parent          = gethui and gethui() or lp:WaitForChild("PlayerGui"),
     })
 
     -- Main frame
@@ -305,7 +303,7 @@ function NoraLib:Window(cfg)
     local tabBarLayout = Instance.new("UIListLayout")
     tabBarLayout.FillDirection = Enum.FillDirection.Horizontal
     tabBarLayout.SortOrder     = Enum.SortOrder.LayoutOrder
-    tabBarLayout.Padding       = UDim.new(0, 6)
+    tabBarLayout.Padding       = UDim.new(0, 2)
     tabBarLayout.Parent        = tabBar
     padding(tabBar, 0, 8, 0, 10)
 
@@ -327,17 +325,16 @@ function NoraLib:Window(cfg)
         local isFirst = #self._tabs == 0
 
         -- Tab button
-      local btn = makeInst("TextButton", {
-    Size = UDim2.fromOffset(90, 36)
-    BackgroundTransparency = 1,
-    Text = name,
-    TextColor3 = theme.Text,
-    TextScaled = true,
-    Font = Enum.Font.GothamBold,
-    TextSize = 12,
-    ZIndex = 3,
-    Parent = tabBar,
-})
+        local btn = makeInst("TextButton", {
+            AutomaticSize    = Enum.AutomaticSize.X,
+            Size             = UDim2.new(0, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text             = name,
+            TextColor3       = isFirst and theme.Accent or theme.TextMuted,
+            Font             = Enum.Font.GothamBold,
+            TextSize         = 12,
+            ZIndex           = 3,
+            Parent           = tabBar,
         })
         padding(btn, 0, 12, 0, 12)
 

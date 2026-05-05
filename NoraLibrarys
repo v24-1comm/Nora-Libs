@@ -1,6 +1,5 @@
 --[[
-    NoraLib  ·  v3
-    Left-sidebar layout, mouse+keyboard keybind, all elements working.
+    NoraLib  ·  v1
 ]]
 
 local NoraLib = {}

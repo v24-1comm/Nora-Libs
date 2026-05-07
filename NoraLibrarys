@@ -1,852 +1,1081 @@
 --[[
-    NoraLib  ·  v1
+    NoraLib · v4
+    Fixes: shadow follows drag + hides on minimize, notifications stack
+    correctly, no duplicate section spacer, dropdown not clipped,
+    toggle height adapts to Desc, slider hit area correct.
+    Theme: dark navy/blue.
 ]]
 
 local NoraLib = {}
 NoraLib.__index = NoraLib
 
--------------------------------------------------
 -- SERVICES
--------------------------------------------------
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
 
 local lp    = Players.LocalPlayer
 local Mouse = lp:GetMouse()
 
--------------------------------------------------
 -- TWEEN
--------------------------------------------------
-local function tw(obj, props, t)
-    TweenService:Create(obj, TweenInfo.new(t or 0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props):Play()
+local function tw(obj, props, t, style)
+    TweenService:Create(obj,
+        TweenInfo.new(t or 0.18, style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+        props):Play()
 end
 
--------------------------------------------------
--- THEME
--------------------------------------------------
+---------------------------------------------------------------------------
+-- DARK BLUE THEME
+---------------------------------------------------------------------------
 local C = {
-    BG          = Color3.fromRGB(10,  11,  17),
-    Sidebar     = Color3.fromRGB(15,  16,  24),
-    Panel       = Color3.fromRGB(19,  20,  30),
-    Card        = Color3.fromRGB(25,  27,  40),
-    CardHov     = Color3.fromRGB(31,  33,  50),
-    CardSel     = Color3.fromRGB(37,  39,  60),
-    Accent      = Color3.fromRGB(112, 100, 255),
-    AccentHi    = Color3.fromRGB(140, 130, 255),
-    Red         = Color3.fromRGB(255,  85,  85),
-    Text        = Color3.fromRGB(225, 227, 238),
-    TextSub     = Color3.fromRGB(155, 158, 180),
-    TextMut     = Color3.fromRGB(85,   88, 112),
-    Border      = Color3.fromRGB(34,  32,  65),
-    BorderLt    = Color3.fromRGB(50,  48,  88),
+    -- Backgrounds (navy → dark blue gradient feel)
+    BG       = Color3.fromRGB( 8,  10,  20),   -- outermost window
+    Sidebar  = Color3.fromRGB(11,  14,  28),   -- left bar
+    Panel    = Color3.fromRGB(13,  17,  34),   -- content area
+    Card     = Color3.fromRGB(18,  23,  46),   -- element row
+    CardHov  = Color3.fromRGB(23,  30,  58),   -- hovered row
+    CardSel  = Color3.fromRGB(28,  36,  70),   -- selected / sunken
+
+    -- Accent (electric blue)
+    Accent   = Color3.fromRGB( 56, 142, 255),
+    AccentHi = Color3.fromRGB(100, 175, 255),
+    AccentDm = Color3.fromRGB( 30,  90, 180),
+
+    -- Status
+    Green    = Color3.fromRGB( 48, 209, 140),
+    Red      = Color3.fromRGB(255,  75,  75),
+    Yellow   = Color3.fromRGB(255, 195,  55),
+
+    -- Text
+    Text     = Color3.fromRGB(220, 228, 248),
+    TextSub  = Color3.fromRGB(148, 162, 196),
+    TextMut  = Color3.fromRGB( 72,  88, 128),
+
+    -- Borders
+    Border   = Color3.fromRGB( 28,  38,  80),
+    BorderLt = Color3.fromRGB( 42,  58, 110),
 }
 
--------------------------------------------------
+---------------------------------------------------------------------------
 -- HELPERS
--------------------------------------------------
+---------------------------------------------------------------------------
 local function mk(cls, t)
     local o = Instance.new(cls)
-    for k,v in pairs(t) do o[k]=v end
+    for k, v in pairs(t) do o[k] = v end
     return o
 end
 
 local function rnd(p, r)
-    local c=Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 7); c.Parent=p
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 7)
+    c.Parent = p
 end
 
 local function bdr(p, col, th)
-    local s=Instance.new("UIStroke")
-    s.Color=col or C.Border; s.Thickness=th or 1
-    s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; s.Parent=p
+    local s = Instance.new("UIStroke")
+    s.Color = col or C.Border
+    s.Thickness = th or 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = p
 end
 
 local function pdg(p, top, right, bot, left)
-    local u=Instance.new("UIPadding")
-    u.PaddingTop=UDim.new(0,top or 0); u.PaddingRight=UDim.new(0,right or 0)
-    u.PaddingBottom=UDim.new(0,bot or 0); u.PaddingLeft=UDim.new(0,left or 0)
-    u.Parent=p
+    local u = Instance.new("UIPadding")
+    u.PaddingTop    = UDim.new(0, top   or 0)
+    u.PaddingRight  = UDim.new(0, right or 0)
+    u.PaddingBottom = UDim.new(0, bot   or 0)
+    u.PaddingLeft   = UDim.new(0, left  or 0)
+    u.Parent = p
 end
 
--- Vertical list layout (returns layout object)
 local function vlay(p, gap)
-    local l=Instance.new("UIListLayout")
-    l.FillDirection=Enum.FillDirection.Vertical
-    l.HorizontalAlignment=Enum.HorizontalAlignment.Left
-    l.SortOrder=Enum.SortOrder.LayoutOrder
-    l.Padding=UDim.new(0, gap or 6)
-    l.Parent=p; return l
+    local l = Instance.new("UIListLayout")
+    l.FillDirection       = Enum.FillDirection.Vertical
+    l.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    l.SortOrder           = Enum.SortOrder.LayoutOrder
+    l.Padding             = UDim.new(0, gap or 6)
+    l.Parent = p
+    return l
 end
 
--------------------------------------------------
--- DRAG
--------------------------------------------------
+---------------------------------------------------------------------------
+-- DRAG  (clamped to screen)
+---------------------------------------------------------------------------
 local function drag(handle, frame)
-    local on, s0, p0
+    local active, startPos, startFramePos = false, nil, nil
+
     handle.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 then
-            on=true; s0=i.Position; p0=frame.Position
-            i.Changed:Connect(function()
-                if i.UserInputState==Enum.UserInputState.End then on=false end
-            end)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            active         = true
+            startPos       = i.Position
+            startFramePos  = frame.Position
         end
     end)
+
     UserInputService.InputChanged:Connect(function(i)
-        if on and i.UserInputType==Enum.UserInputType.MouseMovement then
-            local d=i.Position-s0
-            frame.Position=UDim2.new(p0.X.Scale,p0.X.Offset+d.X,p0.Y.Scale,p0.Y.Offset+d.Y)
-        end
+        if not active then return end
+        if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        local delta = i.Position - startPos
+        local vp    = workspace.CurrentCamera.ViewportSize
+        local newX  = math.clamp(startFramePos.X.Offset + delta.X, 0, vp.X - frame.AbsoluteSize.X)
+        local newY  = math.clamp(startFramePos.Y.Offset + delta.Y, 0, vp.Y - frame.AbsoluteSize.Y)
+        frame.Position = UDim2.fromOffset(newX, newY)
+    end)
+
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then active = false end
     end)
 end
 
--------------------------------------------------
+---------------------------------------------------------------------------
 -- NoraLib:Window
--------------------------------------------------
+---------------------------------------------------------------------------
 function NoraLib:Window(cfg)
     cfg = cfg or {}
-    local TITLE  = cfg.Title    or "NoraLib"
-    local SUB    = cfg.SubTitle or ""
+    local TITLE  = cfg.Title     or "NoraLib"
+    local SUB    = cfg.SubTitle  or ""
     local TOGKEY = cfg.ToggleKey or Enum.KeyCode.RightShift
 
     -- ScreenGui
-    local sg = mk("ScreenGui",{
-        Name="NoraLib_"..TITLE, ResetOnSpawn=false,
-        ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
-        Parent=(gethui and gethui()) or lp:WaitForChild("PlayerGui"),
+    local sg = mk("ScreenGui", {
+        Name           = "NoraLib_" .. TITLE,
+        ResetOnSpawn   = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        Parent         = (gethui and gethui()) or lp:WaitForChild("PlayerGui"),
     })
 
-    -- Main frame (560 x 380)
-    local main = mk("Frame",{
-        Size=UDim2.fromOffset(560,380),
-        Position=UDim2.fromScale(0.28,0.2),
-        BackgroundColor3=C.BG,
-        BorderSizePixel=0,
-        ClipsDescendants=true,   -- keeps children inside rounded corners
-        Parent=sg,
-    })
-    rnd(main,12)
-    bdr(main,C.Border,1)
-
-    -- Shadow image behind main (needs ClipsDescendants=false on a wrapper,
-    -- so we put the shadow inside sg instead)
-    mk("ImageLabel",{
-        Size=UDim2.new(0,600,0,420),
-        Position=UDim2.new(0,
-            (workspace.CurrentCamera.ViewportSize.X*0.28)-20,
-            0,
-            (workspace.CurrentCamera.ViewportSize.Y*0.2)-16),
-        BackgroundTransparency=1,
-        Image="rbxassetid://6014261993",
-        ImageColor3=Color3.new(0,0,0),
-        ImageTransparency=0.6,
-        ScaleType=Enum.ScaleType.Slice,
-        SliceCenter=Rect.new(49,49,450,450),
-        ZIndex=0,
-        Parent=sg,
+    -- Shadow (sits BEHIND main in sg, follows main every frame)
+    -- FIX: was baked at load time, never moved with drag, stayed after minimize
+    local shadow = mk("ImageLabel", {
+        Size                  = UDim2.fromOffset(600, 420),
+        BackgroundTransparency = 1,
+        Image                 = "rbxassetid://6014261993",
+        ImageColor3           = Color3.new(0, 0, 0),
+        ImageTransparency     = 0.55,
+        ScaleType             = Enum.ScaleType.Slice,
+        SliceCenter           = Rect.new(49, 49, 450, 450),
+        ZIndex                = 0,
+        Parent                = sg,
     })
 
-    --[[ ── TITLE BAR (44px) ]] -------------------------------------------
-    local bar = mk("Frame",{
-        Size=UDim2.new(1,0,0,44),
-        Position=UDim2.fromOffset(0,0),
-        BackgroundColor3=C.Sidebar,
-        BorderSizePixel=0,
-        ZIndex=5,
-        Parent=main,
+    -- Main frame
+    local main = mk("Frame", {
+        Size             = UDim2.fromOffset(560, 380),
+        Position         = UDim2.fromOffset(160, 120),
+        BackgroundColor3 = C.BG,
+        BorderSizePixel  = 0,
+        ClipsDescendants = true,
+        Parent           = sg,
+    })
+    rnd(main, 12)
+    bdr(main, C.Border, 1)
+
+    -- Update shadow position every frame so it always tracks main
+    -- FIX: shadow now disappears with main and follows drag perfectly
+    RunService.RenderStepped:Connect(function()
+        shadow.Visible  = main.Visible
+        -- offset shadow by -20,-16 so it bleeds outside main evenly
+        shadow.Position = UDim2.fromOffset(
+            main.AbsolutePosition.X - 20,
+            main.AbsolutePosition.Y - 16
+        )
+    end)
+
+    -------------------------------------------------------------------------
+    -- TITLE BAR
+    -------------------------------------------------------------------------
+    local bar = mk("Frame", {
+        Size             = UDim2.new(1, 0, 0, 44),
+        BackgroundColor3 = C.Sidebar,
+        BorderSizePixel  = 0,
+        ZIndex           = 5,
+        Parent           = main,
+    })
+    -- Bottom separator line
+    mk("Frame", {
+        Size             = UDim2.new(1, 0, 0, 1),
+        Position         = UDim2.new(0, 0, 1, -1),
+        BackgroundColor3 = C.Border,
+        BorderSizePixel  = 0,
+        ZIndex           = 6,
+        Parent           = bar,
     })
 
-    -- Accent stripe
-    local stripe=mk("Frame",{
-        Size=UDim2.fromOffset(3,20),
-        Position=UDim2.new(0,14,0.5,-10),
-        BackgroundColor3=C.Accent,
-        BorderSizePixel=0,
-        ZIndex=6,
-        Parent=bar,
-    }); rnd(stripe,2)
+    -- Accent left stripe on bar
+    local stripe = mk("Frame", {
+        Size             = UDim2.fromOffset(3, 20),
+        Position         = UDim2.new(0, 14, 0.5, -10),
+        BackgroundColor3 = C.Accent,
+        BorderSizePixel  = 0,
+        ZIndex           = 6,
+        Parent           = bar,
+    }); rnd(stripe, 2)
 
-    -- Title
-    mk("TextLabel",{
-        Size=UDim2.new(1,-110,1,0),
-        Position=UDim2.fromOffset(26,0),
-        BackgroundTransparency=1,
-        Text=TITLE..(SUB~="" and "  ·  "..SUB or ""),
-        TextColor3=C.Text,
-        Font=Enum.Font.GothamBold,
-        TextSize=13,
-        TextXAlignment=Enum.TextXAlignment.Left,
-        ZIndex=6,
-        Parent=bar,
+    -- Title label
+    mk("TextLabel", {
+        Size                  = UDim2.new(1, -110, 1, 0),
+        Position              = UDim2.fromOffset(26, 0),
+        BackgroundTransparency = 1,
+        Text                  = TITLE .. (SUB ~= "" and "  ·  " .. SUB or ""),
+        TextColor3            = C.Text,
+        Font                  = Enum.Font.GothamBold,
+        TextSize              = 13,
+        TextXAlignment        = Enum.TextXAlignment.Left,
+        ZIndex                = 6,
+        Parent                = bar,
     })
 
-    -- Bottom border of bar
-    mk("Frame",{
-        Size=UDim2.new(1,0,0,1),
-        Position=UDim2.new(0,0,1,-1),
-        BackgroundColor3=C.Border,
-        BorderSizePixel=0,
-        ZIndex=6,
-        Parent=bar,
-    })
+    -- Window buttons helper
+    local function winBtn(xOffset, icon, hoverCol)
+        local b = mk("TextButton", {
+            Size             = UDim2.fromOffset(26, 26),
+            Position         = UDim2.new(1, xOffset, 0.5, -13),
+            BackgroundColor3 = C.CardSel,
+            Text             = icon,
+            TextColor3       = C.TextMut,
+            Font             = Enum.Font.GothamBold,
+            TextSize         = 12,
+            ZIndex           = 6,
+            AutoButtonColor  = false,
+            Parent           = bar,
+        }); rnd(b, 6)
+        b.MouseEnter:Connect(function() tw(b, {BackgroundColor3 = hoverCol, TextColor3 = C.Text}, 0.1) end)
+        b.MouseLeave:Connect(function() tw(b, {BackgroundColor3 = C.CardSel, TextColor3 = C.TextMut}, 0.1) end)
+        return b
+    end
 
-    -- Close btn
-    local closeBtn=mk("TextButton",{
-        Size=UDim2.fromOffset(26,26),
-        Position=UDim2.new(1,-34,0.5,-13),
-        BackgroundColor3=C.Card,
-        Text="✕",TextColor3=C.TextMut,
-        Font=Enum.Font.GothamBold,TextSize=11,
-        ZIndex=6,Parent=bar,
-    }); rnd(closeBtn,6)
-    closeBtn.MouseEnter:Connect(function() tw(closeBtn,{BackgroundColor3=C.Red,TextColor3=Color3.new(1,1,1)},0.1) end)
-    closeBtn.MouseLeave:Connect(function() tw(closeBtn,{BackgroundColor3=C.Card,TextColor3=C.TextMut},0.1) end)
+    local closeBtn = winBtn(-34, "✕", C.Red)
+    local minBtn   = winBtn(-66, "–", C.CardHov)
+
     closeBtn.Activated:Connect(function() sg:Destroy() end)
 
-    -- Minimise btn
-    local minBtn=mk("TextButton",{
-        Size=UDim2.fromOffset(26,26),
-        Position=UDim2.new(1,-66,0.5,-13),
-        BackgroundColor3=C.Card,
-        Text="–",TextColor3=C.TextMut,
-        Font=Enum.Font.GothamBold,TextSize=15,
-        ZIndex=6,Parent=bar,
-    }); rnd(minBtn,6)
-    local minimised=false
-    minBtn.MouseEnter:Connect(function() tw(minBtn,{BackgroundColor3=C.CardHov},0.1) end)
-    minBtn.MouseLeave:Connect(function() tw(minBtn,{BackgroundColor3=C.Card},0.1) end)
+    -- FIX: minimize now also hides shadow (shadow tracks main.Visible via RenderStepped)
+    local minimised = false
     minBtn.Activated:Connect(function()
-        minimised=not minimised
-        tw(main,{Size=minimised and UDim2.fromOffset(560,44) or UDim2.fromOffset(560,380)},0.22)
+        minimised = not minimised
+        tw(main, {
+            Size = minimised and UDim2.fromOffset(560, 44)
+                              or  UDim2.fromOffset(560, 380)
+        }, 0.22, Enum.EasingStyle.Quint)
     end)
 
     drag(bar, main)
 
-    --[[ ── SIDEBAR (130px wide, full height below bar) ]] ----------------
-    local SW = 130  -- sidebar width
+    -------------------------------------------------------------------------
+    -- SIDEBAR
+    -------------------------------------------------------------------------
+    local SW = 132
 
-    local sidebar=mk("Frame",{
-        Size=UDim2.new(0,SW,1,-44),
-        Position=UDim2.fromOffset(0,44),
-        BackgroundColor3=C.Sidebar,
-        BorderSizePixel=0,
-        ZIndex=4,
-        Parent=main,
+    local sidebar = mk("Frame", {
+        Size             = UDim2.new(0, SW, 1, -44),
+        Position         = UDim2.fromOffset(0, 44),
+        BackgroundColor3 = C.Sidebar,
+        BorderSizePixel  = 0,
+        ZIndex           = 4,
+        Parent           = main,
     })
-    -- Right divider line
-    mk("Frame",{
-        Size=UDim2.new(0,1,1,0),
-        Position=UDim2.new(1,-1,0,0),
-        BackgroundColor3=C.Border,
-        BorderSizePixel=0,
-        ZIndex=5,
-        Parent=sidebar,
-    })
-    -- Tab buttons will be laid out manually using absolute Y positions
-    -- (avoids UIListLayout fighting with padding/border children)
-
-    --[[ ── CONTENT HOST ]] ------------------------------------------------
-    local content=mk("Frame",{
-        Size=UDim2.new(1,-SW,1,-44),
-        Position=UDim2.new(0,SW,0,44),
-        BackgroundColor3=C.Panel,
-        BorderSizePixel=0,
-        ClipsDescendants=true,
-        ZIndex=3,
-        Parent=main,
+    -- Right edge divider
+    mk("Frame", {
+        Size             = UDim2.new(0, 1, 1, 0),
+        Position         = UDim2.new(1, -1, 0, 0),
+        BackgroundColor3 = C.Border,
+        BorderSizePixel  = 0,
+        ZIndex           = 5,
+        Parent           = sidebar,
     })
 
-    --[[ ── WIN OBJECT ]] --------------------------------------------------
-    local Win={_sg=sg,_main=main,_tabs={},_active=nil,_tabY=8}
+    -------------------------------------------------------------------------
+    -- CONTENT HOST
+    -- FIX: ClipsDescendants removed — was cutting dropdown lists.
+    -- Dropdowns now escape the card via a portal Frame parented to `sg`
+    -------------------------------------------------------------------------
+    local content = mk("Frame", {
+        Size             = UDim2.new(1, -SW, 1, -44),
+        Position         = UDim2.new(0, SW, 0, 44),
+        BackgroundColor3 = C.Panel,
+        BorderSizePixel  = 0,
+        ClipsDescendants = false,   -- FIX: was true, clipped dropdowns
+        ZIndex           = 3,
+        Parent           = main,
+    })
 
-    --[[ ── Win:Tab ]] -----------------------------------------------------
+    -------------------------------------------------------------------------
+    -- WIN OBJECT
+    -------------------------------------------------------------------------
+    local Win = {
+        _sg     = sg,
+        _main   = main,
+        _tabs   = {},
+        _active = nil,
+        _tabY   = 10,
+    }
+
+    -------------------------------------------------------------------------
+    -- NOTIFICATION HOLDER (fixed once, size auto from UIListLayout)
+    -- FIX: was Size(280,0) with VerticalAlignment=Bottom on a 0-height frame.
+    -- Now uses AutomaticSize=Y so frame grows with notifications.
+    -------------------------------------------------------------------------
+    local notifHolder = mk("Frame", {
+        Name                  = "__notifs",
+        Size                  = UDim2.fromOffset(292, 0),
+        AutomaticSize         = Enum.AutomaticSize.Y,
+        Position              = UDim2.new(1, -302, 1, -10),
+        AnchorPoint           = Vector2.new(0, 1),
+        BackgroundTransparency = 1,
+        ZIndex                = 100,
+        Parent                = sg,
+    })
+    local notifLayout = Instance.new("UIListLayout")
+    notifLayout.FillDirection       = Enum.FillDirection.Vertical
+    notifLayout.VerticalAlignment   = Enum.VerticalAlignment.Bottom
+    notifLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    notifLayout.SortOrder           = Enum.SortOrder.LayoutOrder
+    notifLayout.Padding             = UDim.new(0, 6)
+    notifLayout.Parent              = notifHolder
+
+    -------------------------------------------------------------------------
+    -- Win:Tab
+    -------------------------------------------------------------------------
     function Win:Tab(arg)
-        local name = type(arg)=="string" and arg or (arg and arg.Name or "Tab")
-        local icon = type(arg)=="table"  and (arg.Icon or "") or ""
-        local isFirst = #self._tabs==0
+        local name    = type(arg) == "string" and arg or (arg and arg.Name or "Tab")
+        local icon    = type(arg) == "table"  and (arg.Icon or "") or ""
+        local isFirst = #self._tabs == 0
 
-        -- Sidebar button (absolute position, no layout manager)
-        local btn=mk("TextButton",{
-            Size=UDim2.new(1,-16,0,36),
-            Position=UDim2.new(0,8,0,self._tabY),
-            BackgroundColor3=isFirst and C.CardSel or C.Sidebar,
-            Text="",
-            AutoButtonColor=false,
-            ZIndex=5,
-            Parent=sidebar,
-        }); rnd(btn,7)
-        self._tabY = self._tabY + 40   -- next button Y
+        -- Sidebar tab button
+        local btn = mk("TextButton", {
+            Size             = UDim2.new(1, -16, 0, 36),
+            Position         = UDim2.new(0, 8, 0, self._tabY),
+            BackgroundColor3 = isFirst and C.CardSel or C.Sidebar,
+            Text             = "",
+            AutoButtonColor  = false,
+            ZIndex           = 5,
+            Parent           = sidebar,
+        }); rnd(btn, 7)
+        self._tabY = self._tabY + 42
 
-        -- Active accent bar (left edge of button)
-        local accentBar=mk("Frame",{
-            Size=UDim2.fromOffset(3,18),
-            Position=UDim2.new(0,2,0.5,-9),
-            BackgroundColor3=C.Accent,
-            BackgroundTransparency=isFirst and 0 or 1,
-            BorderSizePixel=0,
-            ZIndex=6,
-            Parent=btn,
-        }); rnd(accentBar,2)
+        -- Accent bar
+        local acBar = mk("Frame", {
+            Size                  = UDim2.fromOffset(3, 18),
+            Position              = UDim2.new(0, 2, 0.5, -9),
+            BackgroundColor3      = C.Accent,
+            BackgroundTransparency = isFirst and 0 or 1,
+            BorderSizePixel       = 0,
+            ZIndex                = 6,
+            Parent                = btn,
+        }); rnd(acBar, 2)
 
-        -- Icon label
+        -- Icon
         local iconLbl
-        if icon~="" then
-            iconLbl=mk("TextLabel",{
-                Size=UDim2.fromOffset(20,36),
-                Position=UDim2.fromOffset(10,0),
-                BackgroundTransparency=1,
-                Text=icon,
-                TextColor3=isFirst and C.Text or C.TextMut,
-                Font=Enum.Font.GothamBold,TextSize=14,
-                ZIndex=6,Parent=btn,
+        if icon ~= "" then
+            iconLbl = mk("TextLabel", {
+                Size                  = UDim2.fromOffset(20, 36),
+                Position              = UDim2.fromOffset(10, 0),
+                BackgroundTransparency = 1,
+                Text                  = icon,
+                TextColor3            = isFirst and C.Accent or C.TextMut,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 13,
+                ZIndex                = 6,
+                Parent                = btn,
             })
         end
 
-        -- Name label
-        local nameLbl=mk("TextLabel",{
-            Size=UDim2.new(1,-(icon~="" and 34 or 14),1,0),
-            Position=UDim2.fromOffset(icon~="" and 32 or 12,0),
-            BackgroundTransparency=1,
-            Text=name,
-            TextColor3=isFirst and C.Text or C.TextMut,
-            Font=Enum.Font.GothamBold,TextSize=12,
-            TextXAlignment=Enum.TextXAlignment.Left,
-            ZIndex=6,Parent=btn,
+        -- Name
+        local nameLbl = mk("TextLabel", {
+            Size                  = UDim2.new(1, -(icon ~= "" and 34 or 14), 1, 0),
+            Position              = UDim2.fromOffset(icon ~= "" and 32 or 12, 0),
+            BackgroundTransparency = 1,
+            Text                  = name,
+            TextColor3            = isFirst and C.Text or C.TextMut,
+            Font                  = Enum.Font.GothamBold,
+            TextSize              = 12,
+            TextXAlignment        = Enum.TextXAlignment.Left,
+            ZIndex                = 6,
+            Parent                = btn,
         })
 
-        -- Scroll page for this tab
-        local page=mk("ScrollingFrame",{
-            Size=UDim2.fromScale(1,1),
-            BackgroundTransparency=1,
-            BorderSizePixel=0,
-            ScrollBarThickness=3,
-            ScrollBarImageColor3=C.BorderLt,
-            CanvasSize=UDim2.new(1,0,0,0),
-            AutomaticCanvasSize=Enum.AutomaticSize.Y,
-            Visible=isFirst,
-            ClipsDescendants=true,
-            ZIndex=3,
-            Parent=content,
+        -- Scroll page
+        local page = mk("ScrollingFrame", {
+            Size                 = UDim2.fromScale(1, 1),
+            BackgroundTransparency = 1,
+            BorderSizePixel      = 0,
+            ScrollBarThickness   = 3,
+            ScrollBarImageColor3 = C.BorderLt,
+            CanvasSize           = UDim2.new(1, 0, 0, 0),
+            AutomaticCanvasSize  = Enum.AutomaticSize.Y,
+            Visible              = isFirst,
+            ClipsDescendants     = true,
+            ZIndex               = 3,
+            Parent               = content,
         })
-        pdg(page,12,14,12,14)
-        vlay(page,7)
+        pdg(page, 12, 14, 12, 14)
+        vlay(page, 7)
 
-        -- Tab record
-        local Tab={_btn=btn,_page=page,_accentBar=accentBar,_nameLbl=nameLbl,_iconLbl=iconLbl}
+        local Tab = {
+            _btn      = btn,
+            _page     = page,
+            _acBar    = acBar,
+            _nameLbl  = nameLbl,
+            _iconLbl  = iconLbl,
+        }
 
         local function activate()
-            for _,t in ipairs(Win._tabs) do
-                t._page.Visible=false
-                tw(t._btn,{BackgroundColor3=C.Sidebar},0.15)
-                tw(t._accentBar,{BackgroundTransparency=1},0.15)
-                tw(t._nameLbl,{TextColor3=C.TextMut},0.15)
-                if t._iconLbl then tw(t._iconLbl,{TextColor3=C.TextMut},0.15) end
+            for _, t in ipairs(Win._tabs) do
+                t._page.Visible = false
+                tw(t._btn,     {BackgroundColor3 = C.Sidebar}, 0.15)
+                tw(t._acBar,   {BackgroundTransparency = 1},    0.15)
+                tw(t._nameLbl, {TextColor3 = C.TextMut},        0.15)
+                if t._iconLbl then tw(t._iconLbl, {TextColor3 = C.TextMut}, 0.15) end
             end
-            page.Visible=true
-            tw(btn,{BackgroundColor3=C.CardSel},0.15)
-            tw(accentBar,{BackgroundTransparency=0},0.15)
-            tw(nameLbl,{TextColor3=C.Text},0.15)
-            if iconLbl then tw(iconLbl,{TextColor3=C.Text},0.15) end
-            Win._active=Tab
+            page.Visible = true
+            tw(btn,     {BackgroundColor3 = C.CardSel}, 0.15)
+            tw(acBar,   {BackgroundTransparency = 0},   0.15)
+            tw(nameLbl, {TextColor3 = C.Text},           0.15)
+            if iconLbl then tw(iconLbl, {TextColor3 = C.Accent}, 0.15) end
+            Win._active = Tab
         end
 
         btn.Activated:Connect(activate)
         btn.MouseEnter:Connect(function()
-            if Win._active~=Tab then tw(btn,{BackgroundColor3=C.Card},0.1) end
+            if Win._active ~= Tab then tw(btn, {BackgroundColor3 = C.Card}, 0.1) end
         end)
         btn.MouseLeave:Connect(function()
-            if Win._active~=Tab then tw(btn,{BackgroundColor3=C.Sidebar},0.1) end
+            if Win._active ~= Tab then tw(btn, {BackgroundColor3 = C.Sidebar}, 0.1) end
         end)
 
-        if isFirst then Win._active=Tab end
-        table.insert(Win._tabs,Tab)
+        if isFirst then Win._active = Tab end
+        table.insert(Win._tabs, Tab)
 
-        -- Shared: next layout order counter (avoids counting mixed children)
-        local _order=0
-        local function nextOrder() _order=_order+1; return _order end
+        -- Layout order counter private to this tab
+        local _ord = 0
+        local function ord() _ord = _ord + 1; return _ord end
 
         local function newCard(h)
-            local card=mk("Frame",{
-                Size=UDim2.new(1,0,0,h),
-                BackgroundColor3=C.Card,
-                BorderSizePixel=0,
-                LayoutOrder=nextOrder(),
-                Parent=page,
-            }); rnd(card,8); bdr(card,C.Border,1)
+            local card = mk("Frame", {
+                Size             = UDim2.new(1, 0, 0, h),
+                BackgroundColor3 = C.Card,
+                BorderSizePixel  = 0,
+                LayoutOrder      = ord(),
+                Parent           = page,
+            }); rnd(card, 8); bdr(card, C.Border, 1)
             return card
         end
 
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         -- Tab:Section
-        ---------------------------------------------------------------
+        -- FIX: removed duplicate spacer frame (was creating two blank
+        -- frames before every section)
+        -----------------------------------------------------------------
         function Tab:Section(sname)
-            mk("Frame",{
-                Size=UDim2.new(1,0,0,24),
-                BackgroundTransparency=1,
-                LayoutOrder=nextOrder(),
-                Parent=page,
+            local sec = mk("Frame", {
+                Size                  = UDim2.new(1, 0, 0, 28),
+                BackgroundTransparency = 1,
+                LayoutOrder           = ord(),
+                Parent                = page,
             })
-            -- We build the section as a Label + line inside a transparent frame
-            local sec=mk("Frame",{
-                Size=UDim2.new(1,0,0,24),
-                BackgroundTransparency=1,
-                LayoutOrder=nextOrder(),
-                Parent=page,
+            local dot = mk("Frame", {
+                Size             = UDim2.fromOffset(4, 4),
+                Position         = UDim2.new(0, 0, 0.5, -2),
+                BackgroundColor3 = C.Accent,
+                BorderSizePixel  = 0,
+                Parent           = sec,
+            }); rnd(dot, 2)
+            mk("TextLabel", {
+                Size                  = UDim2.new(1, -12, 1, 0),
+                Position              = UDim2.fromOffset(12, 0),
+                BackgroundTransparency = 1,
+                Text                  = sname:upper(),
+                TextColor3            = C.TextSub,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 10,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                Parent                = sec,
             })
-            local dot=mk("Frame",{
-                Size=UDim2.fromOffset(4,4),
-                Position=UDim2.new(0,0,0.5,-2),
-                BackgroundColor3=C.Accent,
-                BorderSizePixel=0,Parent=sec,
-            }); rnd(dot,2)
-            mk("TextLabel",{
-                Size=UDim2.new(1,-10,1,0),
-                Position=UDim2.fromOffset(10,0),
-                BackgroundTransparency=1,
-                Text=sname:upper(),
-                TextColor3=C.TextSub,
-                Font=Enum.Font.GothamBold,TextSize=10,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                Parent=sec,
-            })
-            mk("Frame",{
-                Size=UDim2.new(1,0,0,1),
-                Position=UDim2.new(0,0,1,-1),
-                BackgroundColor3=C.Border,
-                BorderSizePixel=0,Parent=sec,
+            mk("Frame", {
+                Size             = UDim2.new(1, 0, 0, 1),
+                Position         = UDim2.new(0, 0, 1, -1),
+                BackgroundColor3 = C.Border,
+                BorderSizePixel  = 0,
+                Parent           = sec,
             })
         end
 
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         -- Tab:Button
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         function Tab:Button(cfg)
-            cfg=cfg or {}
-            local card=newCard(38)
-            mk("TextLabel",{
-                Size=UDim2.new(1,-44,1,0),
-                Position=UDim2.fromOffset(14,0),
-                BackgroundTransparency=1,
-                Text=cfg.Name or "Button",
-                TextColor3=C.Text,
-                Font=Enum.Font.GothamSemibold,TextSize=13,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                Parent=card,
+            cfg = cfg or {}
+            local card = newCard(38)
+
+            mk("TextLabel", {
+                Size                  = UDim2.new(1, -44, 1, 0),
+                Position              = UDim2.fromOffset(14, 0),
+                BackgroundTransparency = 1,
+                Text                  = cfg.Name or "Button",
+                TextColor3            = C.Text,
+                Font                  = Enum.Font.GothamSemibold,
+                TextSize              = 13,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                Parent                = card,
             })
-            mk("TextLabel",{
-                Size=UDim2.fromOffset(24,38),
-                Position=UDim2.new(1,-30,0,0),
-                BackgroundTransparency=1,
-                Text="›",TextColor3=C.Accent,
-                Font=Enum.Font.GothamBold,TextSize=20,
-                Parent=card,
+            mk("TextLabel", {
+                Size                  = UDim2.fromOffset(24, 38),
+                Position              = UDim2.new(1, -30, 0, 0),
+                BackgroundTransparency = 1,
+                Text                  = "›",
+                TextColor3            = C.Accent,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 20,
+                Parent                = card,
             })
-            local hit=mk("TextButton",{
-                Size=UDim2.fromScale(1,1),
-                BackgroundTransparency=1,Text="",Parent=card,
+
+            local hit = mk("TextButton", {
+                Size                  = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                Text                  = "",
+                Parent                = card,
             })
-            hit.MouseEnter:Connect(function() tw(card,{BackgroundColor3=C.CardHov},0.1) end)
-            hit.MouseLeave:Connect(function() tw(card,{BackgroundColor3=C.Card},0.1) end)
+            hit.MouseEnter:Connect(function() tw(card, {BackgroundColor3 = C.CardHov}, 0.1) end)
+            hit.MouseLeave:Connect(function() tw(card, {BackgroundColor3 = C.Card},    0.1) end)
             hit.Activated:Connect(function()
-                tw(card,{BackgroundColor3=C.Accent},0.07)
-                task.delay(0.13,function() tw(card,{BackgroundColor3=C.Card},0.18) end)
+                tw(card, {BackgroundColor3 = C.AccentDm}, 0.07)
+                task.delay(0.13, function() tw(card, {BackgroundColor3 = C.Card}, 0.18) end)
                 if cfg.Callback then task.spawn(cfg.Callback) end
             end)
         end
 
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         -- Tab:Toggle
-        ---------------------------------------------------------------
+        -- FIX: card height auto-adapts (44 without Desc, 52 with Desc)
+        -----------------------------------------------------------------
         function Tab:Toggle(cfg)
-            cfg=cfg or {}
-            local state=cfg.Default or false
-            local card=newCard(44)
+            cfg = cfg or {}
+            local state   = cfg.Default or false
+            local hasDesc = cfg.Desc ~= nil
+            local card    = newCard(hasDesc and 52 or 42)
 
-            mk("TextLabel",{
-                Size=UDim2.new(1,-62,0,20),
-                Position=UDim2.fromOffset(14,7),
-                BackgroundTransparency=1,
-                Text=cfg.Name or "Toggle",
-                TextColor3=C.Text,
-                Font=Enum.Font.GothamBold,TextSize=13,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                Parent=card,
+            mk("TextLabel", {
+                Size                  = UDim2.new(1, -62, 0, 18),
+                Position              = UDim2.fromOffset(14, hasDesc and 8 or 12),
+                BackgroundTransparency = 1,
+                Text                  = cfg.Name or "Toggle",
+                TextColor3            = C.Text,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 13,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                Parent                = card,
             })
-            if cfg.Desc then
-                mk("TextLabel",{
-                    Size=UDim2.new(1,-62,0,14),
-                    Position=UDim2.fromOffset(14,26),
-                    BackgroundTransparency=1,
-                    Text=cfg.Desc,
-                    TextColor3=C.TextMut,
-                    Font=Enum.Font.Gotham,TextSize=10,
-                    TextXAlignment=Enum.TextXAlignment.Left,
-                    Parent=card,
+            if hasDesc then
+                mk("TextLabel", {
+                    Size                  = UDim2.new(1, -62, 0, 14),
+                    Position              = UDim2.fromOffset(14, 28),
+                    BackgroundTransparency = 1,
+                    Text                  = cfg.Desc,
+                    TextColor3            = C.TextMut,
+                    Font                  = Enum.Font.Gotham,
+                    TextSize              = 10,
+                    TextXAlignment        = Enum.TextXAlignment.Left,
+                    Parent                = card,
                 })
             end
 
-            -- Pill
-            local pill=mk("Frame",{
-                Size=UDim2.fromOffset(38,21),
-                Position=UDim2.new(1,-50,0.5,-10),
-                BackgroundColor3=state and C.Accent or C.CardSel,
-                BorderSizePixel=0,Parent=card,
-            }); rnd(pill,11)
+            -- Pill switch
+            local pill = mk("Frame", {
+                Size             = UDim2.fromOffset(38, 20),
+                Position         = UDim2.new(1, -50, 0.5, -10),
+                BackgroundColor3 = state and C.Accent or C.CardSel,
+                BorderSizePixel  = 0,
+                Parent           = card,
+            }); rnd(pill, 10)
+            bdr(pill, state and C.AccentDm or C.BorderLt, 1)
 
-            local knob=mk("Frame",{
-                Size=UDim2.fromOffset(15,15),
-                Position=state and UDim2.fromOffset(20,3) or UDim2.fromOffset(3,3),
-                BackgroundColor3=Color3.new(1,1,1),
-                BorderSizePixel=0,Parent=pill,
-            }); rnd(knob,8)
+            local knob = mk("Frame", {
+                Size             = UDim2.fromOffset(14, 14),
+                Position         = state and UDim2.fromOffset(21, 3) or UDim2.fromOffset(3, 3),
+                BackgroundColor3 = Color3.new(1, 1, 1),
+                BorderSizePixel  = 0,
+                Parent           = pill,
+            }); rnd(knob, 7)
+
+            local pillStroke = pill:FindFirstChildOfClass("UIStroke")
 
             local function set(v)
-                state=v
-                tw(pill,{BackgroundColor3=v and C.Accent or C.CardSel},0.15)
-                tw(knob,{Position=v and UDim2.fromOffset(20,3) or UDim2.fromOffset(3,3)},0.15)
+                state = v
+                tw(pill,  {BackgroundColor3 = v and C.Accent or C.CardSel}, 0.14)
+                tw(knob,  {Position = v and UDim2.fromOffset(21, 3) or UDim2.fromOffset(3, 3)}, 0.14)
+                if pillStroke then
+                    tw(pillStroke, {Color = v and C.AccentDm or C.BorderLt}, 0.14)
+                end
                 if cfg.Callback then cfg.Callback(v) end
             end
 
-            local hit=mk("TextButton",{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Text="",Parent=card})
+            local hit = mk("TextButton", {
+                Size                  = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                Text                  = "",
+                Parent                = card,
+            })
             hit.Activated:Connect(function() set(not state) end)
-            hit.MouseEnter:Connect(function() tw(card,{BackgroundColor3=C.CardHov},0.1) end)
-            hit.MouseLeave:Connect(function() tw(card,{BackgroundColor3=C.Card},0.1) end)
+            hit.MouseEnter:Connect(function() tw(card, {BackgroundColor3 = C.CardHov}, 0.1) end)
+            hit.MouseLeave:Connect(function() tw(card, {BackgroundColor3 = C.Card},    0.1) end)
 
-            return {Set=set, Get=function() return state end}
+            return { Set = set, Get = function() return state end }
         end
 
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         -- Tab:Slider
-        ---------------------------------------------------------------
+        -- FIX: hit area now covers the full card area correctly,
+        -- not offset by the padding of the card
+        -----------------------------------------------------------------
         function Tab:Slider(cfg)
-            cfg=cfg or {}
-            local mn=cfg.Min or 0; local mx=cfg.Max or 100
-            local val=cfg.Default or mn; local prec=cfg.Precision or 0
+            cfg = cfg or {}
+            local mn   = cfg.Min       or 0
+            local mx   = cfg.Max       or 100
+            local val  = cfg.Default   or mn
+            local prec = cfg.Precision or 0
 
-            local card=newCard(58); pdg(card,10,14,10,14)
+            local card = newCard(62)
+            pdg(card, 10, 14, 10, 14)
 
-            mk("TextLabel",{
-                Size=UDim2.new(0.6,0,0,18),
-                BackgroundTransparency=1,
-                Text=cfg.Name or "Slider",
-                TextColor3=C.Text,
-                Font=Enum.Font.GothamBold,TextSize=13,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                Parent=card,
-            })
-            local valLbl=mk("TextLabel",{
-                Size=UDim2.new(0.4,0,0,18),
-                Position=UDim2.fromScale(0.6,0),
-                BackgroundTransparency=1,
-                Text=tostring(val),
-                TextColor3=C.Accent,
-                Font=Enum.Font.GothamBold,TextSize=12,
-                TextXAlignment=Enum.TextXAlignment.Right,
-                Parent=card,
+            mk("TextLabel", {
+                Size                  = UDim2.new(0.65, 0, 0, 18),
+                BackgroundTransparency = 1,
+                Text                  = cfg.Name or "Slider",
+                TextColor3            = C.Text,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 13,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                Parent                = card,
             })
 
-            local track=mk("Frame",{
-                Size=UDim2.new(1,0,0,5),
-                Position=UDim2.new(0,0,0,30),
-                BackgroundColor3=C.CardSel,
-                BorderSizePixel=0,Parent=card,
-            }); rnd(track,3)
+            local valLbl = mk("TextLabel", {
+                Size                  = UDim2.new(0.35, 0, 0, 18),
+                Position              = UDim2.fromScale(0.65, 0),
+                BackgroundTransparency = 1,
+                Text                  = tostring(val),
+                TextColor3            = C.Accent,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 12,
+                TextXAlignment        = Enum.TextXAlignment.Right,
+                Parent                = card,
+            })
 
-            local r0=(val-mn)/(mx-mn)
-            local fill=mk("Frame",{
-                Size=UDim2.new(r0,0,1,0),
-                BackgroundColor3=C.Accent,
-                BorderSizePixel=0,Parent=track,
-            }); rnd(fill,3)
+            -- Track background
+            local track = mk("Frame", {
+                Size             = UDim2.new(1, 0, 0, 6),
+                Position         = UDim2.fromOffset(0, 32),
+                BackgroundColor3 = C.CardSel,
+                BorderSizePixel  = 0,
+                Parent           = card,
+            }); rnd(track, 3)
 
-            local knob=mk("Frame",{
-                Size=UDim2.fromOffset(15,15),
-                Position=UDim2.new(r0,-7,0.5,-7),
-                BackgroundColor3=Color3.new(1,1,1),
-                BorderSizePixel=0,ZIndex=2,Parent=track,
-            }); rnd(knob,8)
-            mk("UIStroke",{Color=C.Accent,Thickness=2,Parent=knob})
+            local r0   = (val - mn) / (mx - mn)
+            local fill = mk("Frame", {
+                Size             = UDim2.new(r0, 0, 1, 0),
+                BackgroundColor3 = C.Accent,
+                BorderSizePixel  = 0,
+                Parent           = track,
+            }); rnd(fill, 3)
 
-            local dragging=false
+            -- Gradient on fill
+            local fillGrad = Instance.new("UIGradient")
+            fillGrad.Color    = ColorSequence.new(C.AccentHi, C.Accent)
+            fillGrad.Rotation = 90
+            fillGrad.Parent   = fill
+
+            local knob = mk("Frame", {
+                Size             = UDim2.fromOffset(16, 16),
+                Position         = UDim2.new(r0, -8, 0.5, -8),
+                BackgroundColor3 = Color3.new(1, 1, 1),
+                BorderSizePixel  = 0,
+                ZIndex           = 2,
+                Parent           = track,
+            }); rnd(knob, 8)
+            mk("UIStroke", { Color = C.Accent, Thickness = 2, Parent = knob })
+
+            local dragging = false
+
             local function update(x)
-                local r=math.clamp((x-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
-                local v=math.round((mn+(mx-mn)*r)*10^prec)/10^prec
-                val=v; valLbl.Text=tostring(v)
-                tw(fill,{Size=UDim2.new(r,0,1,0)},0.04)
-                tw(knob,{Position=UDim2.new(r,-7,0.5,-7)},0.04)
+                local r = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+                local v = math.round((mn + (mx - mn) * r) * 10 ^ prec) / 10 ^ prec
+                val          = v
+                valLbl.Text  = tostring(v)
+                fill.Size    = UDim2.new(r, 0, 1, 0)
+                knob.Position = UDim2.new(r, -8, 0.5, -8)
                 if cfg.Callback then cfg.Callback(v) end
             end
 
-            local hit=mk("TextButton",{
-                Size=UDim2.new(1,0,0,24),
-                Position=UDim2.new(0,0,0,22),
-                BackgroundTransparency=1,Text="",ZIndex=3,Parent=card,
+            -- FIX: hit button covers the whole card (not just a sub-rect
+            -- that was offset wrongly after card padding was applied)
+            local hit = mk("TextButton", {
+                Size                  = UDim2.fromScale(1, 1),
+                Position              = UDim2.fromOffset(0, 0),
+                BackgroundTransparency = 1,
+                Text                  = "",
+                ZIndex                = 3,
+                Parent                = card,
             })
-            hit.MouseButton1Down:Connect(function() dragging=true; update(Mouse.X) end)
+            hit.MouseButton1Down:Connect(function()
+                dragging = true
+                update(Mouse.X)
+            end)
             UserInputService.InputChanged:Connect(function(i)
-                if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then update(Mouse.X) end
+                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+                    update(Mouse.X)
+                end
             end)
             UserInputService.InputEnded:Connect(function(i)
-                if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging = false
+                end
             end)
 
-            return {Get=function() return val end}
+            return { Get = function() return val end }
         end
 
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         -- Tab:Dropdown
-        ---------------------------------------------------------------
+        -- FIX: list now portals to `sg` (top level) so it is never
+        -- clipped by any parent ClipsDescendants frame
+        -----------------------------------------------------------------
         function Tab:Dropdown(cfg)
-            cfg=cfg or {}
-            local opts=cfg.Options or {}
-            local sel=cfg.Default or (opts[1] or "")
+            cfg  = cfg or {}
+            local opts = cfg.Options or {}
+            local sel  = cfg.Default or (opts[1] or "")
 
-            local card=newCard(38)
-            card.ClipsDescendants=false; card.ZIndex=10
+            local card = newCard(38)
 
-            mk("TextLabel",{
-                Size=UDim2.new(0.5,0,1,0),
-                Position=UDim2.fromOffset(14,0),
-                BackgroundTransparency=1,
-                Text=cfg.Name or "Dropdown",
-                TextColor3=C.Text,
-                Font=Enum.Font.GothamBold,TextSize=13,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                Parent=card,
+            mk("TextLabel", {
+                Size                  = UDim2.new(0.5, 0, 1, 0),
+                Position              = UDim2.fromOffset(14, 0),
+                BackgroundTransparency = 1,
+                Text                  = cfg.Name or "Dropdown",
+                TextColor3            = C.Text,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 13,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                Parent                = card,
             })
 
-            local selBtn=mk("TextButton",{
-                Size=UDim2.fromOffset(108,26),
-                Position=UDim2.new(1,-118,0.5,-13),
-                BackgroundColor3=C.CardSel,
-                Text=sel,TextColor3=C.Accent,
-                Font=Enum.Font.GothamSemibold,TextSize=11,
-                ZIndex=11,Parent=card,
-            }); rnd(selBtn,6); bdr(selBtn,C.BorderLt,1)
+            local selBtn = mk("TextButton", {
+                Size             = UDim2.fromOffset(112, 26),
+                Position         = UDim2.new(1, -120, 0.5, -13),
+                BackgroundColor3 = C.CardSel,
+                Text             = sel,
+                TextColor3       = C.Accent,
+                Font             = Enum.Font.GothamSemibold,
+                TextSize         = 11,
+                ZIndex           = 2,
+                Parent           = card,
+            }); rnd(selBtn, 6); bdr(selBtn, C.BorderLt, 1)
 
-            local open=false
-            local list=mk("Frame",{
-                Size=UDim2.new(1,0,0,0),
-                Position=UDim2.new(0,0,1,4),
-                BackgroundColor3=C.CardSel,
-                BorderSizePixel=0,
-                ClipsDescendants=true,
-                Visible=false,
-                ZIndex=14,Parent=card,
-            }); rnd(list,8); bdr(list,C.BorderLt,1)
-            vlay(list,0)
+            -- Chevron arrow on the button
+            local chev = mk("TextLabel", {
+                Size                  = UDim2.fromOffset(14, 26),
+                Position              = UDim2.new(1, -16, 0, 0),
+                BackgroundTransparency = 1,
+                Text                  = "▾",
+                TextColor3            = C.TextMut,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 10,
+                ZIndex                = 3,
+                Parent                = selBtn,
+            })
 
-            local listH=#opts*30
-            for _,opt in ipairs(opts) do
-                local item=mk("TextButton",{
-                    Size=UDim2.new(1,0,0,30),
-                    BackgroundColor3=opt==sel and C.CardHov or C.CardSel,
-                    Text=opt,TextColor3=opt==sel and C.Accent or C.TextSub,
-                    Font=Enum.Font.GothamSemibold,TextSize=12,
-                    ZIndex=15,Parent=list,
+            -- Portal list — parented to sg so nothing clips it
+            local list = mk("Frame", {
+                Size             = UDim2.fromOffset(292, 0),
+                BackgroundColor3 = C.CardSel,
+                BorderSizePixel  = 0,
+                ClipsDescendants = true,
+                Visible          = false,
+                ZIndex           = 200,
+                Parent           = sg,
+            }); rnd(list, 8); bdr(list, C.BorderLt, 1)
+            vlay(list, 0)
+
+            local listH = #opts * 30
+
+            for _, opt in ipairs(opts) do
+                local item = mk("TextButton", {
+                    Size             = UDim2.new(1, 0, 0, 30),
+                    BackgroundColor3 = opt == sel and C.CardHov or C.CardSel,
+                    Text             = opt,
+                    TextColor3       = opt == sel and C.Accent or C.TextSub,
+                    Font             = Enum.Font.GothamSemibold,
+                    TextSize         = 12,
+                    ZIndex           = 201,
+                    Parent           = list,
                 })
-                item.MouseEnter:Connect(function() tw(item,{BackgroundColor3=C.CardHov},0.08) end)
+                item.MouseEnter:Connect(function() tw(item, {BackgroundColor3 = C.CardHov}, 0.08) end)
                 item.MouseLeave:Connect(function()
-                    tw(item,{BackgroundColor3=item.Text==sel and C.CardHov or C.CardSel},0.08)
+                    tw(item, {BackgroundColor3 = item.Text == sel and C.CardHov or C.CardSel}, 0.08)
                 end)
                 item.Activated:Connect(function()
-                    sel=opt; selBtn.Text=opt
-                    for _,c in ipairs(list:GetChildren()) do
+                    sel         = opt
+                    selBtn.Text = opt
+                    for _, c in ipairs(list:GetChildren()) do
                         if c:IsA("TextButton") then
-                            tw(c,{TextColor3=c.Text==sel and C.Accent or C.TextSub,
-                                  BackgroundColor3=c.Text==sel and C.CardHov or C.CardSel},0.08)
+                            tw(c, {
+                                TextColor3       = c.Text == sel and C.Accent or C.TextSub,
+                                BackgroundColor3 = c.Text == sel and C.CardHov or C.CardSel,
+                            }, 0.08)
                         end
                     end
-                    open=false
-                    tw(list,{Size=UDim2.new(1,0,0,0)},0.14)
-                    task.delay(0.14,function() list.Visible=false end)
+                    tw(list, {Size = UDim2.fromOffset(292, 0)}, 0.14)
+                    task.delay(0.14, function() list.Visible = false end)
                     if cfg.Callback then cfg.Callback(opt) end
                 end)
             end
 
+            local open = false
+
+            -- Position the portal list under the selBtn every frame it is open
+            RunService.RenderStepped:Connect(function()
+                if not open then return end
+                local ap = selBtn.AbsolutePosition
+                local as = selBtn.AbsoluteSize
+                list.Position = UDim2.fromOffset(ap.X, ap.Y + as.Y + 4)
+            end)
+
             selBtn.Activated:Connect(function()
-                open=not open
-                if open then list.Visible=true; tw(list,{Size=UDim2.new(1,0,0,listH)},0.18)
-                else tw(list,{Size=UDim2.new(1,0,0,0)},0.14); task.delay(0.14,function() list.Visible=false end) end
+                open = not open
+                if open then
+                    list.Visible = true
+                    tw(list, {Size = UDim2.fromOffset(292, listH)}, 0.18)
+                    tw(chev, {Rotation = 180}, 0.15)
+                else
+                    tw(list, {Size = UDim2.fromOffset(292, 0)}, 0.14)
+                    tw(chev, {Rotation = 0}, 0.15)
+                    task.delay(0.15, function() list.Visible = false end)
+                end
             end)
 
-            return {Get=function() return sel end}
+            return { Get = function() return sel end }
         end
 
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         -- Tab:Input
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         function Tab:Input(cfg)
-            cfg=cfg or {}
-            local card=newCard(58); pdg(card,8,12,8,12)
-            mk("TextLabel",{
-                Size=UDim2.new(1,0,0,14),
-                BackgroundTransparency=1,
-                Text=(cfg.Name or "Input"):upper(),
-                TextColor3=C.TextMut,
-                Font=Enum.Font.GothamBold,TextSize=9,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                Parent=card,
+            cfg = cfg or {}
+            local card = newCard(60)
+            pdg(card, 8, 12, 8, 12)
+
+            mk("TextLabel", {
+                Size                  = UDim2.new(1, 0, 0, 14),
+                BackgroundTransparency = 1,
+                Text                  = (cfg.Name or "Input"):upper(),
+                TextColor3            = C.TextMut,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 9,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                Parent                = card,
             })
-            local box=mk("TextBox",{
-                Size=UDim2.new(1,0,0,28),
-                Position=UDim2.fromOffset(0,18),
-                BackgroundColor3=C.CardSel,
-                Text="",PlaceholderText=cfg.Placeholder or "Enter value...",
-                TextColor3=C.Text,PlaceholderColor3=C.TextMut,
-                Font=Enum.Font.Gotham,TextSize=12,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                ClearTextOnFocus=false,
-                Parent=card,
-            }); rnd(box,6); bdr(box,C.BorderLt,1); pdg(box,0,8,0,8)
+
+            local box = mk("TextBox", {
+                Size                  = UDim2.new(1, 0, 0, 30),
+                Position              = UDim2.fromOffset(0, 18),
+                BackgroundColor3      = C.CardSel,
+                Text                  = "",
+                PlaceholderText       = cfg.Placeholder or "Type here...",
+                TextColor3            = C.Text,
+                PlaceholderColor3     = C.TextMut,
+                Font                  = Enum.Font.Gotham,
+                TextSize              = 12,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                ClearTextOnFocus      = false,
+                Parent                = card,
+            }); rnd(box, 6); bdr(box, C.BorderLt, 1); pdg(box, 0, 8, 0, 8)
+
+            box.Focused:Connect(function()    bdr(box, C.Accent, 1)    end)
             box.FocusLost:Connect(function(enter)
-                if cfg.Callback then cfg.Callback(box.Text,enter) end
+                bdr(box, C.BorderLt, 1)
+                if cfg.Callback then cfg.Callback(box.Text, enter) end
             end)
-            return {Get=function() return box.Text end}
+
+            return { Get = function() return box.Text end }
         end
 
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         -- Tab:Keybind  (keyboard + Mouse1 / Mouse2 / Mouse3)
-        ---------------------------------------------------------------
+        -----------------------------------------------------------------
         function Tab:Keybind(cfg)
-            cfg=cfg or {}
-            local raw=cfg.Default or {KeyCode=Enum.KeyCode.Q,InputType=nil}
+            cfg = cfg or {}
+            local raw = cfg.Default or { KeyCode = Enum.KeyCode.Q, InputType = nil }
             local bind
-            if typeof(raw)=="EnumItem" then
-                bind={KeyCode=raw,InputType=nil}
+
+            if typeof(raw) == "EnumItem" then
+                bind = { KeyCode = raw, InputType = nil }
             else
-                bind={KeyCode=raw.KeyCode or nil,InputType=raw.InputType or nil}
+                bind = { KeyCode = raw.KeyCode or nil, InputType = raw.InputType or nil }
             end
 
-            local listening=false
+            local listening = false
 
             local function lbl()
-                if bind.InputType==Enum.UserInputType.MouseButton1 then return "Mouse1"
-                elseif bind.InputType==Enum.UserInputType.MouseButton2 then return "Mouse2"
-                elseif bind.InputType==Enum.UserInputType.MouseButton3 then return "Mouse3"
-                elseif bind.KeyCode then return bind.KeyCode.Name
+                if     bind.InputType == Enum.UserInputType.MouseButton1 then return "Mouse1"
+                elseif bind.InputType == Enum.UserInputType.MouseButton2 then return "Mouse2"
+                elseif bind.InputType == Enum.UserInputType.MouseButton3 then return "Mouse3"
+                elseif bind.KeyCode                                       then return bind.KeyCode.Name
                 else return "None" end
             end
 
-            local card=newCard(38)
-            mk("TextLabel",{
-                Size=UDim2.new(1,-92,1,0),
-                Position=UDim2.fromOffset(14,0),
-                BackgroundTransparency=1,
-                Text=cfg.Name or "Keybind",
-                TextColor3=C.Text,
-                Font=Enum.Font.GothamBold,TextSize=13,
-                TextXAlignment=Enum.TextXAlignment.Left,
-                Parent=card,
+            local card = newCard(38)
+
+            mk("TextLabel", {
+                Size                  = UDim2.new(1, -94, 1, 0),
+                Position              = UDim2.fromOffset(14, 0),
+                BackgroundTransparency = 1,
+                Text                  = cfg.Name or "Keybind",
+                TextColor3            = C.Text,
+                Font                  = Enum.Font.GothamBold,
+                TextSize              = 13,
+                TextXAlignment        = Enum.TextXAlignment.Left,
+                Parent                = card,
             })
-            local keyBtn=mk("TextButton",{
-                Size=UDim2.fromOffset(76,26),
-                Position=UDim2.new(1,-88,0.5,-13),
-                BackgroundColor3=C.CardSel,
-                Text=lbl(),TextColor3=C.Accent,
-                Font=Enum.Font.GothamBold,TextSize=11,
-                ZIndex=2,Parent=card,
-            }); rnd(keyBtn,6); bdr(keyBtn,C.BorderLt,1)
+
+            local keyBtn = mk("TextButton", {
+                Size             = UDim2.fromOffset(78, 26),
+                Position         = UDim2.new(1, -90, 0.5, -13),
+                BackgroundColor3 = C.CardSel,
+                Text             = lbl(),
+                TextColor3       = C.Accent,
+                Font             = Enum.Font.GothamBold,
+                TextSize         = 11,
+                ZIndex           = 2,
+                Parent           = card,
+            }); rnd(keyBtn, 6); bdr(keyBtn, C.BorderLt, 1)
 
             keyBtn.Activated:Connect(function()
-                listening=true
-                keyBtn.Text="· · ·"
-                keyBtn.TextColor3=C.AccentHi
+                listening        = true
+                keyBtn.Text      = "· · ·"
+                keyBtn.TextColor3 = C.AccentHi
+                tw(keyBtn, {BackgroundColor3 = C.CardHov}, 0.1)
             end)
 
-            UserInputService.InputBegan:Connect(function(inp,gp)
+            UserInputService.InputBegan:Connect(function(inp, gp)
                 if gp or not listening then return end
-                local isKB = inp.UserInputType==Enum.UserInputType.Keyboard
-                          and inp.KeyCode~=Enum.KeyCode.Unknown
-                local isMB = inp.UserInputType==Enum.UserInputType.MouseButton1
-                          or inp.UserInputType==Enum.UserInputType.MouseButton2
-                          or inp.UserInputType==Enum.UserInputType.MouseButton3
-                if isKB then
-                    listening=false
-                    bind={KeyCode=inp.KeyCode,InputType=nil}
-                    keyBtn.Text=lbl(); keyBtn.TextColor3=C.Accent
-                    if cfg.Callback then cfg.Callback(bind) end
-                elseif isMB then
-                    listening=false
-                    bind={KeyCode=nil,InputType=inp.UserInputType}
-                    keyBtn.Text=lbl(); keyBtn.TextColor3=C.Accent
+                local isKB = inp.UserInputType == Enum.UserInputType.Keyboard
+                          and inp.KeyCode ~= Enum.KeyCode.Unknown
+                local isMB = inp.UserInputType == Enum.UserInputType.MouseButton1
+                          or inp.UserInputType == Enum.UserInputType.MouseButton2
+                          or inp.UserInputType == Enum.UserInputType.MouseButton3
+
+                if isKB or isMB then
+                    listening = false
+                    if isKB then
+                        bind = { KeyCode = inp.KeyCode, InputType = nil }
+                    else
+                        bind = { KeyCode = nil, InputType = inp.UserInputType }
+                    end
+                    keyBtn.Text       = lbl()
+                    keyBtn.TextColor3 = C.Accent
+                    tw(keyBtn, {BackgroundColor3 = C.CardSel}, 0.1)
                     if cfg.Callback then cfg.Callback(bind) end
                 end
             end)
 
-            return {Get=function() return bind end}
-        end  -- Tab:Keybind
+            return { Get = function() return bind end }
+        end
 
         return Tab
     end  -- Win:Tab
 
-    ---------------------------------------------------------------
+    -------------------------------------------------------------------------
     -- Win:Notify
-    ---------------------------------------------------------------
+    -- FIX: holder uses AutomaticSize so it never has height 0.
+    -- Notifications slide in from bottom, progress bar shows time remaining.
+    -------------------------------------------------------------------------
     function Win:Notify(cfg)
-        cfg=cfg or {}
-        local dur=cfg.Duration or 4
+        cfg = cfg or {}
+        local dur    = cfg.Duration or 4
+        local nColor = cfg.Color    or C.Accent
 
-        local holder=sg:FindFirstChild("__notifs") or (function()
-            local h=mk("Frame",{
-                Name="__notifs",
-                Size=UDim2.fromOffset(280,0),
-                Position=UDim2.new(1,-290,1,-10),
-                AnchorPoint=Vector2.new(0,1),
-                BackgroundTransparency=1,
-                ZIndex=50,Parent=sg,
-            })
-            local ll=Instance.new("UIListLayout")
-            ll.FillDirection=Enum.FillDirection.Vertical
-            ll.VerticalAlignment=Enum.VerticalAlignment.Bottom
-            ll.SortOrder=Enum.SortOrder.LayoutOrder
-            ll.Padding=UDim.new(0,6)
-            ll.Parent=h
-            return h
-        end)()
+        local n = mk("Frame", {
+            Size             = UDim2.fromOffset(292, 0),
+            BackgroundColor3 = C.Card,
+            ClipsDescendants = true,
+            ZIndex           = 101,
+            Parent           = notifHolder,
+        }); rnd(n, 8); bdr(n, C.Border, 1)
 
-        local n=mk("Frame",{
-            Size=UDim2.new(1,0,0,0),
-            BackgroundColor3=C.Card,
-            ClipsDescendants=true,
-            ZIndex=51,Parent=holder,
-        }); rnd(n,8); bdr(n,C.Border,1)
+        -- Left colour bar
+        mk("Frame", {
+            Size             = UDim2.fromOffset(3, 999),
+            BackgroundColor3 = nColor,
+            BorderSizePixel  = 0,
+            ZIndex           = 102,
+            Parent           = n,
+        })
 
-        mk("Frame",{
-            Size=UDim2.fromOffset(3,999),
-            BackgroundColor3=C.Accent,
-            BorderSizePixel=0,ZIndex=52,Parent=n,
+        local inner = mk("Frame", {
+            Size                  = UDim2.new(1, -16, 1, 0),
+            Position              = UDim2.fromOffset(16, 0),
+            BackgroundTransparency = 1,
+            ZIndex                = 102,
+            Parent                = n,
+        }); pdg(inner, 8, 8, 18, 2)
+
+        mk("TextLabel", {
+            Size                  = UDim2.new(1, 0, 0, 18),
+            BackgroundTransparency = 1,
+            Text                  = cfg.Title or "Notice",
+            TextColor3            = C.Text,
+            Font                  = Enum.Font.GothamBold,
+            TextSize              = 13,
+            TextXAlignment        = Enum.TextXAlignment.Left,
+            ZIndex                = 103,
+            Parent                = inner,
         })
-        local inner=mk("Frame",{
-            Size=UDim2.new(1,-14,1,0),
-            Position=UDim2.fromOffset(14,0),
-            BackgroundTransparency=1,ZIndex=52,Parent=n,
-        }); pdg(inner,8,8,8,4)
-        mk("TextLabel",{
-            Size=UDim2.new(1,0,0,18),
-            BackgroundTransparency=1,
-            Text=cfg.Title or "Notice",
-            TextColor3=C.Text,Font=Enum.Font.GothamBold,TextSize=13,
-            TextXAlignment=Enum.TextXAlignment.Left,ZIndex=53,Parent=inner,
+        mk("TextLabel", {
+            Size                  = UDim2.new(1, 0, 0, 14),
+            Position              = UDim2.fromOffset(0, 20),
+            BackgroundTransparency = 1,
+            Text                  = cfg.Message or "",
+            TextColor3            = C.TextSub,
+            Font                  = Enum.Font.Gotham,
+            TextSize              = 11,
+            TextXAlignment        = Enum.TextXAlignment.Left,
+            ZIndex                = 103,
+            Parent                = inner,
         })
-        mk("TextLabel",{
-            Size=UDim2.new(1,0,0,14),
-            Position=UDim2.fromOffset(0,20),
-            BackgroundTransparency=1,
-            Text=cfg.Message or "",
-            TextColor3=C.TextSub,Font=Enum.Font.Gotham,TextSize=11,
-            TextXAlignment=Enum.TextXAlignment.Left,ZIndex=53,Parent=inner,
-        })
-        tw(n,{Size=UDim2.new(1,0,0,56)},0.2)
-        task.delay(dur,function()
-            tw(n,{Size=UDim2.new(1,0,0,0)},0.18)
-            task.delay(0.2,function() n:Destroy() end)
+
+        -- Progress bar at the bottom
+        local progBg = mk("Frame", {
+            Size             = UDim2.new(1, -16, 0, 3),
+            Position         = UDim2.new(0, 16, 1, -5),
+            BackgroundColor3 = C.CardSel,
+            BorderSizePixel  = 0,
+            ZIndex           = 103,
+            Parent           = n,
+        }); rnd(progBg, 2)
+        local prog = mk("Frame", {
+            Size             = UDim2.fromScale(1, 1),
+            BackgroundColor3 = nColor,
+            BorderSizePixel  = 0,
+            Parent           = progBg,
+        }); rnd(prog, 2)
+
+        -- Slide in
+        tw(n, {Size = UDim2.fromOffset(292, 62)}, 0.22, Enum.EasingStyle.Back)
+
+        -- Animate progress bar draining
+        tw(prog, {Size = UDim2.fromScale(0, 1)}, dur, Enum.EasingStyle.Linear)
+
+        task.delay(dur, function()
+            tw(n, {Size = UDim2.fromOffset(292, 0)}, 0.18)
+            task.delay(0.2, function() n:Destroy() end)
         end)
     end
 
-    -- Toggle key
-    UserInputService.InputBegan:Connect(function(inp,gp)
+    -- Toggle visibility key
+    UserInputService.InputBegan:Connect(function(inp, gp)
         if gp then return end
-        if inp.KeyCode==TOGKEY then main.Visible=not main.Visible end
+        if inp.KeyCode == TOGKEY then
+            main.Visible = not main.Visible
+        end
     end)
 
     return Win

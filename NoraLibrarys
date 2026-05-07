@@ -1,9 +1,5 @@
 --[[
     NoraLib · v4
-    Fixes: shadow follows drag + hides on minimize, notifications stack
-    correctly, no duplicate section spacer, dropdown not clipped,
-    toggle height adapts to Desc, slider hit area correct.
-    Theme: dark navy/blue.
 ]]
 
 local NoraLib = {}
